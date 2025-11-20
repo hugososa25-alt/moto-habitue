@@ -1,0 +1,289 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Repartidor Habitue | Moto Foxtrot</title>
+
+  <style>
+    :root{
+      --bg:#0f172a;
+      --card:#ffffff;
+      --accent:#e53935;
+      --border:#e5e7eb;
+      --muted:#6b7280;
+      --green:#16a34a;
+      --yellow:#facc15;
+    }
+    *{box-sizing:border-box;margin:0;padding:0;}
+    body{
+      font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+      background:var(--bg);
+      color:#111827;
+      min-height:100vh;
+      display:flex;
+      justify-content:center;
+    }
+    .wrap{
+      width:100%;
+      max-width:480px;
+      padding:14px 10px 18px;
+    }
+    .card{
+      background:var(--card);
+      border-radius:14px;
+      padding:14px;
+      box-shadow:0 2px 8px rgba(15,23,42,.4);
+    }
+    h1{
+      font-size:18px;
+      font-weight:700;
+      margin-bottom:4px;
+      text-align:center;
+    }
+    .subtitle{
+      font-size:12px;
+      color:var(--muted);
+      text-align:center;
+      margin-bottom:12px;
+    }
+    label{
+      display:block;
+      margin-top:8px;
+      font-size:13px;
+      font-weight:600;
+    }
+    input{
+      width:100%;
+      margin-top:4px;
+      padding:7px 9px;
+      border-radius:8px;
+      border:1px solid var(--border);
+      font-size:14px;
+    }
+    .btn-row{
+      display:flex;
+      gap:8px;
+      margin-top:12px;
+    }
+    button{
+      flex:1;
+      border:none;
+      border-radius:999px;
+      padding:9px 10px;
+      font-size:14px;
+      font-weight:600;
+      color:#ffffff;
+      cursor:pointer;
+    }
+    .btn-start{background:var(--accent);}
+    .btn-pause{background:var(--yellow);color:#111827;}
+    .btn-stop{background:#111827;}
+    .status-pill{
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      padding:3px 9px;
+      border-radius:999px;
+      font-size:12px;
+      font-weight:600;
+      margin-top:6px;
+    }
+    .status-en_viaje{background:#bbf7d0;color:#166534;}
+    .status-pausado{background:#fef9c3;color:#854d0e;}
+    .status-finalizado{background:#fecaca;color:#b91c1c;}
+    .status-asignado{background:#e0f2fe;color:#075985;}
+    .status-sin{background:#e5e7eb;color:#374151;}
+
+    .info{
+      margin-top:10px;
+      font-size:12px;
+      color:#374151;
+    }
+    .info-row{
+      display:flex;
+      justify-content:space-between;
+      margin-top:2px;
+    }
+    .info-label{color:var(--muted);}
+    .info-value{font-weight:600;}
+    .foot{
+      margin-top:10px;
+      font-size:11px;
+      color:#9ca3af;
+      text-align:center;
+    }
+  </style>
+
+  <!-- Firebase -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.3/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.3/firebase-database-compat.js"></script>
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyAAOOVZNArN286c9Aqc0O8Ks83-xJ7x-BI",
+      authDomain: "seguimiento-repartos.firebaseapp.com",
+      databaseURL: "https://seguimiento-repartos-default-rtdb.firebaseio.com",
+      projectId: "seguimiento-repartos",
+      storageBucket: "seguimiento-repartos.firebasestorage.app",
+      messagingSenderId: "55880559267"
+    };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+  </script>
+</head>
+<body>
+<div class="wrap">
+  <div class="card">
+    <h1>Repartidor Habitue</h1>
+    <div class="subtitle">
+      Moto en vivo · Enviá tu ubicación a la central estilo Foxtrot
+    </div>
+
+    <label>Tu nombre / moto</label>
+    <input id="driverName" placeholder="Ej: Juan / Moto 1"/>
+
+    <label>Pedido / referencia</label>
+    <input id="orderRef" placeholder="Ej: HAB-01"/>
+
+    <div class="btn-row">
+      <button class="btn-start" onclick="startTrip()">Iniciar</button>
+      <button class="btn-pause" onclick="pauseTrip()">Pausar</button>
+      <button class="btn-stop" onclick="finishTrip()">Finalizar</button>
+    </div>
+
+    <div id="statusPill" class="status-pill status-sin">Sin datos</div>
+
+    <div class="info">
+      <div class="info-row">
+        <span class="info-label">Latitud</span>
+        <span class="info-value" id="latLabel">–</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Longitud</span>
+        <span class="info-value" id="lngLabel">–</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Última actualización</span>
+        <span class="info-value" id="timeLabel">–</span>
+      </div>
+    </div>
+
+    <div class="foot">
+      Recordá permitir el acceso a la ubicación cuando el navegador lo pida.  
+      Los datos se envían a <code>foxtrot/demo/driver</code>.
+    </div>
+  </div>
+</div>
+
+<script>
+  let watchId = null;
+  const ref = db.ref("foxtrot/demo/driver");
+
+  function setStatus(status){
+    const pill = document.getElementById("statusPill");
+    pill.className = "status-pill";
+    if(status === "en_viaje") pill.classList.add("status-en_viaje");
+    else if(status === "pausado") pill.classList.add("status-pausado");
+    else if(status === "finalizado") pill.classList.add("status-finalizado");
+    else if(status === "asignado") pill.classList.add("status-asignado");
+    else pill.classList.add("status-sin");
+
+    pill.textContent =
+      status === "en_viaje"   ? "En viaje" :
+      status === "pausado"    ? "Pausado" :
+      status === "finalizado" ? "Finalizado" :
+      status === "asignado"   ? "Asignado" :
+      "Sin datos";
+  }
+
+  function updateLabels(lat,lng){
+    document.getElementById("latLabel").textContent  =
+      (typeof lat === "number") ? lat.toFixed(5) : "–";
+    document.getElementById("lngLabel").textContent  =
+      (typeof lng === "number") ? lng.toFixed(5) : "–";
+    document.getElementById("timeLabel").textContent =
+      new Date().toLocaleTimeString();
+  }
+
+  function sendPosition(lat,lng,status){
+    const driverName = document.getElementById("driverName").value.trim() || "Moto 1";
+    const orderRef   = document.getElementById("orderRef").value.trim() || "-";
+
+    ref.update({
+      driverName: driverName,
+      orderRef:   orderRef,
+      lat:        lat,
+      lng:        lng,
+      status:     status,
+      updatedAt:  new Date().toISOString()
+    });
+  }
+
+  function startTrip(){
+    if(!navigator.geolocation){
+      alert("Este dispositivo no permite obtener la ubicación.");
+      return;
+    }
+
+    if(watchId !== null){
+      navigator.geolocation.clearWatch(watchId);
+      watchId = null;
+    }
+
+    watchId = navigator.geolocation.watchPosition(
+      (pos)=>{
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+        updateLabels(lat,lng);
+        setStatus("en_viaje");
+        sendPosition(lat,lng,"en_viaje");
+      },
+      (err)=>{
+        console.error(err);
+        alert("No se pudo leer la ubicación. Verificá permisos de GPS.");
+      },
+      {
+        enableHighAccuracy:true,
+        maximumAge:5000,
+        timeout:10000
+      }
+    );
+  }
+
+  function pauseTrip(){
+    if(watchId !== null){
+      navigator.geolocation.clearWatch(watchId);
+      watchId = null;
+    }
+    setStatus("pausado");
+    // guardamos solo el estado; la central mantiene última posición
+    ref.update({
+      status:"pausado",
+      updatedAt:new Date().toISOString()
+    });
+  }
+
+  function finishTrip(){
+    if(watchId !== null){
+      navigator.geolocation.clearWatch(watchId);
+      watchId = null;
+    }
+    setStatus("finalizado");
+    ref.update({
+      status:"finalizado",
+      updatedAt:new Date().toISOString()
+    });
+  }
+
+  // Opcional: ver estado que ya estaba en Firebase
+  ref.on("value", snap=>{
+    const data = snap.val();
+    if(!data) return;
+    setStatus(data.status || "sin");
+    if(typeof data.lat === "number" && typeof data.lng === "number"){
+      updateLabels(data.lat, data.lng);
+    }
+  });
+</script>
+</body>
+</html>
